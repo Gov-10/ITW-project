@@ -1,6 +1,7 @@
 from fastapi import FastAPI
 from agents.agent import agent
 from agents.email_writer_agent import email_writer_agent
+from agents.poem_writer_agent import poem_writer_agent
 from pydantic import BaseModel
 import requests
 app = FastAPI()
@@ -11,9 +12,44 @@ class topicInput(BaseModel):
 class EmailInput(BaseModel):
     topic : str
 
+class PoemInput(BaseModel):
+    topic : str
+    theme : str
+
 @app.get("/hello")
 async def hello():
     return {"message" : "hello"}
+
+
+@app.post("/poem")
+def poem(payload: PoemInput):
+    topic = payload.topic
+    theme = payload.theme.lower()
+    api_url = f"http://api.quotable.io/quotes?tags={theme}"
+    quote_response = requests.get(api_url)
+    if quote_response.status_code == 200:
+        data = quote_response.json()
+        quotes = [q["content"] for q in data.get("results", [])[:3]]
+        inspiration = " | ".join(quotes)
+    else:
+        inspiration = "No external poetic inspiration found."
+    query = f"""
+    You are an award-winning poet.
+    Topic: {topic}
+    Theme: {theme}
+    Inspiration lines: {inspiration}
+
+    Write a 10-line poem inspired by the above topic and theme.
+    Maintain poetic rhythm, emotional depth, and creativity.
+    """
+    result = poem_writer_agent(query)
+    return {
+        "topic" : topic, 
+        "theme" : theme,
+        "result" : result.message["content"][0]["text"]
+    }
+
+
 
 @app.post("/email")
 def email(payload: EmailInput):
