@@ -1,5 +1,6 @@
 from fastapi import FastAPI
 from agents.agent import agent
+from agents.email_writer_agent import email_writer_agent
 from pydantic import BaseModel
 import requests
 app = FastAPI()
@@ -7,9 +8,42 @@ app = FastAPI()
 class topicInput(BaseModel):
     topic : str
 
+class EmailInput(BaseModel):
+    topic : str
+
 @app.get("/hello")
 async def hello():
     return {"message" : "hello"}
+
+@app.post("/email")
+def email(payload: EmailInput):
+    topic = payload.topic
+    related_api = f"https://api.datamuse.com/words?ml={topic.replace(' ', '+')}"
+    related_response = requests.get(related_api)
+    if related_response.status_code == 200:
+        related_words = [w["word"] for w in related_response.json()[:10]]
+        context = ", ".join(related_words)
+    else:
+        context = "No related context found."
+    query = f"""
+    You are a professional email writer AI.
+    Topic: {topic}
+    Related context: {context}
+
+    Task: Write a concise, polished, and grammatically rich professional email
+    about the given topic. Avoid unnecessary fluff. 
+    Structure as:
+    {{
+      "subject": "Email subject line",
+      "body": "Email body text",
+      "sign_off": "Best regards, [Your Name]"
+    }}
+    """
+    result = email_writer_agent(query)
+    return {
+        "topic" : topic, 
+        "result" : result.message["content"][0]["text"]
+    }
 
 @app.post("/simplify")
 def simplify(payload: topicInput):
